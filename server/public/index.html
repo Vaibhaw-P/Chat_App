@@ -1,69 +1,16 @@
-<html lang="en" class="h-full">
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Modern Chat App</title>
-
-    <!-- ✅ Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- ✅ Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-papfSPKG0H2zHhQdAd3pbVgDKjtb1j9H2I1IuO+89Tf1m3HnDrmF5vKzPp+JXFr2TgV2fRMDj9i3t/zyBFszXw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-
-    <!-- ✅ Emoji Button Picker -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@joeattardi/emoji-button@4.6.2/dist/index.min.css" />
+    <title>Chat App - Server Static</title>
+    <link rel="stylesheet" href="./css/style.css" />
   </head>
+  <body>
+    <h1>Welcome to the Server Static Page</h1>
+    <p>This is the server-hosted static index.html.</p>
+    <p>If you're seeing this, your Express backend is correctly serving static files from <code>/public</code>.</p>
 
-  <body class="h-screen bg-white text-gray-900 font-sans overflow-hidden">
-    <div class="flex h-full w-full">
-      <!-- 🟦 Left Panel: Room Info -->
-      <aside class="w-1/4 min-w-[240px] border-r bg-gray-100 p-4 flex flex-col">
-        <h2 class="text-xl font-semibold mb-4">Rooms</h2>
-        <div id="room-info" class="flex-1 overflow-y-auto space-y-2"></div>
-        <div class="mt-4">
-          <input id="new-room-input" class="w-full p-2 border rounded" placeholder="Create a new room..." />
-          <button id="create-room-btn" class="mt-2 w-full bg-blue-500 text-white py-2 rounded">Create</button>
-        </div>
-      </aside>
-
-      <!-- 🟨 Center Panel: Chat Area -->
-      <main class="flex-1 flex flex-col">
-        <header class="flex justify-between items-center p-4 border-b">
-          <div>
-            <h3 id="current-room" class="text-lg font-bold">Select a room</h3>
-            <p class="text-sm text-gray-500">Type your message below</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span id="user-info" class="text-blue-500 font-medium"></span>
-          </div>
-        </header>
-
-        <section id="messages-area" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-          <ul id="messages" class="space-y-3"></ul>
-        </section>
-
-        <footer class="p-4 border-t flex items-center gap-2">
-          <button id="emoji-btn" class="text-xl">😊</button>
-          <input id="message-input" class="flex-1 p-2 border rounded" placeholder="Type a message..." />
-          <input type="file" id="file-upload" hidden />
-          <label for="file-upload" class="cursor-pointer"><i class="fas fa-paperclip text-xl"></i></label>
-          <button id="send-btn" class="bg-blue-500 text-white px-4 py-2 rounded">Send</button>
-        </footer>
-      </main>
-
-      <!-- 🟩 Right Panel: Room Users -->
-      <aside class="w-1/4 min-w-[220px] border-l bg-gray-100 p-4 flex flex-col">
-        <h4 class="text-lg font-semibold mb-4">Room Users</h4>
-        <div id="user-list" class="space-y-3 overflow-y-auto flex-1">
-          <!-- Users with DP will appear here -->
-        </div>
-        <div id="typing-indicator" class="text-sm text-gray-500 mt-4"></div>
-      </aside>
-    </div>
-
-    <!-- ✅ Socket.io + Emoji Picker + JS -->
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@joeattardi/emoji-button@4.6.2/dist/index.min.js"></script>
-    <script src="../js/app.js"></script>
+    <script src="./js/app.js"></script>
   </body>
 </html>
