@@ -6,7 +6,8 @@ let usersInRoom = [];
 let typingTimeout;
 let isTyping = false;
 let windowFocused = true;
-let socketEventsBound = false; // ✅ Prevent multiple event bindings
+let socketEventsBound = false;
+let messageHistory = []; // ✅ Track messages with IDs
 
 // DOM Elements
 const loginSection = document.getElementById('login-section');
@@ -23,7 +24,6 @@ const messagesList = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 
-// User list sidebar
 let userListSidebar = document.getElementById('user-list');
 if (!userListSidebar) {
     userListSidebar = document.createElement('div');
@@ -41,7 +41,6 @@ if (!userListSidebar) {
 const userListUl = document.getElementById('user-list-ul');
 const typingIndicator = document.getElementById('typing-indicator');
 
-// --- Input Sanitization Utilities ---
 function sanitizeInput(str) {
     return String(str)
         .trim()
@@ -55,7 +54,6 @@ function sanitizeInput(str) {
         }[c]));
 }
 
-// --- Username Login ---
 loginBtn.addEventListener('click', handleLogin);
 usernameInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') handleLogin();
@@ -67,6 +65,7 @@ function handleLogin() {
         loginError.textContent = 'Username cannot be empty.';
         return;
     }
+    if (socket) socket.disconnect();
 
     socket = io('https://chat-app-i5e6.onrender.com', {
         transports: ['websocket'],
@@ -86,7 +85,6 @@ function handleLogin() {
     });
 }
 
-// --- Room Management ---
 createRoomBtn.addEventListener('click', createRoom);
 newRoomInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') createRoom();
@@ -128,7 +126,6 @@ function joinRoom(room) {
     });
 }
 
-// --- Messaging ---
 sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') sendMessage();
@@ -138,14 +135,16 @@ messageInput.addEventListener('keydown', e => {
 function sendMessage() {
     const text = sanitizeInput(messageInput.value);
     if (!text || !currentRoom) return;
-    socket.emit('chat message', { room: currentRoom, text });
+    const messageId = Date.now() + Math.random().toString(36).substr(2, 5);
+    socket.emit('chat message', { room: currentRoom, text, id: messageId });
     messageInput.value = '';
     stopTyping();
 }
 
-function renderMessage({ user, text, time, system }) {
+function renderMessage({ user, text, time, id, system }) {
     const li = document.createElement('li');
     li.className = system ? 'system' : (user === username ? 'self' : 'other');
+    if (id) li.dataset.id = id;
 
     if (system) {
         li.textContent = text;
@@ -163,15 +162,39 @@ function renderMessage({ user, text, time, system }) {
 
         const msgText = document.createElement('div');
         msgText.className = 'message-text';
-        msgText.innerHTML = formatMessageText(sanitizeInput(text));
-
+        msgText.innerHTML = formatMessageText(text);
         li.appendChild(header);
         li.appendChild(msgText);
+
+        if (user === username) {
+            const editBtn = document.createElement('button');
+            editBtn.textContent = '✏️';
+            editBtn.style.marginLeft = '10px';
+            editBtn.onclick = () => editMessage(id, text);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = '❌';
+            deleteBtn.onclick = () => deleteMessage(id);
+
+            header.appendChild(editBtn);
+            header.appendChild(deleteBtn);
+        }
     }
     messagesList.appendChild(li);
     messagesList.scrollTop = messagesList.scrollHeight;
-    if (!windowFocused && !system) {
-        showNotification(user, text);
+    if (!windowFocused && !system) showNotification(user, text);
+}
+
+function editMessage(id, oldText) {
+    const newText = prompt('Edit your message:', oldText);
+    if (newText !== null && newText.trim() !== '') {
+        socket.emit('edit message', { id, text: sanitizeInput(newText), room: currentRoom });
+    }
+}
+
+function deleteMessage(id) {
+    if (confirm('Delete this message?')) {
+        socket.emit('delete message', { id, room: currentRoom });
     }
 }
 
@@ -181,14 +204,12 @@ function formatTime(ts) {
 }
 
 function formatMessageText(text) {
-    let formatted = text
+    return text
         .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
         .replace(/\*(.+?)\*/g, '<i>$1</i>')
         .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    return formatted;
 }
 
-// --- Typing Indicator ---
 function handleTyping() {
     if (!isTyping) {
         isTyping = true;
@@ -205,7 +226,6 @@ function stopTyping() {
     }
 }
 
-// --- Render User List ---
 function renderUserList(users) {
     userListUl.innerHTML = '';
     users.forEach(u => {
@@ -219,14 +239,12 @@ function renderUserList(users) {
     });
 }
 
-// --- Notifications ---
 function showNotification(user, text) {
     if (Notification.permission === "granted") {
         new Notification(`New message from ${user}`, { body: text });
     }
 }
 
-// --- Socket.io Events ---
 function setupSocketEvents() {
     if (socketEventsBound) return;
     socketEventsBound = true;
@@ -246,6 +264,19 @@ function setupSocketEvents() {
 
     socket.on('chat message', (msg) => {
         renderMessage(msg);
+    });
+
+    socket.on('edit message', ({ id, text }) => {
+        const li = [...messagesList.children].find(el => el.dataset.id === id);
+        if (li) {
+            const msgText = li.querySelector('.message-text');
+            if (msgText) msgText.innerHTML = formatMessageText(text);
+        }
+    });
+
+    socket.on('delete message', ({ id }) => {
+        const li = [...messagesList.children].find(el => el.dataset.id === id);
+        if (li) li.remove();
     });
 
     socket.on('system message', (msg) => {
@@ -288,7 +319,6 @@ function setupSocketEvents() {
     });
 }
 
-// --- Window Focus/Blur for Notifications ---
 window.addEventListener('focus', () => {
     windowFocused = true;
 });
@@ -299,7 +329,6 @@ window.addEventListener('blur', () => {
     }
 });
 
-// Observe changes in the messages list
 const observer = new MutationObserver(() => {
     messagesList.scrollTop = messagesList.scrollHeight;
 });
