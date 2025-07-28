@@ -7,16 +7,13 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Allow only your Netlify frontend to access this backend
 app.use(cors({
   origin: 'https://chatssssss.netlify.app',
   methods: ['GET', 'POST']
 }));
 
-// ✅ Serve static files from "public" (for local testing)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ✅ Configure Socket.IO with CORS for Netlify
 const io = new Server(server, {
   cors: {
     origin: 'https://chatssssss.netlify.app',
@@ -24,17 +21,15 @@ const io = new Server(server, {
   }
 });
 
-// 📄 Serve index.html on root
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 🌐 In-memory state tracking
 const users = {};
 const usernames = new Set();
 const rooms = new Map();
+const messageStore = new Map(); // 🆕 Store messages with ID for edit/delete
 
-// ✨ Sanitize helper
 function sanitize(str) {
   return String(str).trim().replace(/[<>&"'`]/g, c => ({
     '<': '&lt;',
@@ -46,15 +41,12 @@ function sanitize(str) {
   }[c]));
 }
 
-// 🔌 Socket.io logic
 io.on('connection', (socket) => {
-  // Username check
   socket.on('check username', (username, cb) => {
     username = sanitize(username);
     cb(usernames.has(username) || !username);
   });
 
-  // Join lobby
   socket.on('join lobby', (username) => {
     username = sanitize(username);
     users[socket.id] = { username, room: null };
@@ -62,7 +54,6 @@ io.on('connection', (socket) => {
     socket.emit('room list', Array.from(rooms.keys()));
   });
 
-  // Create room
   socket.on('create room', (roomName, cb) => {
     roomName = sanitize(roomName);
     if (!roomName || rooms.has(roomName)) {
@@ -74,7 +65,6 @@ io.on('connection', (socket) => {
     cb(true);
   });
 
-  // Join room
   socket.on('join room', (roomName, cb) => {
     roomName = sanitize(roomName);
     const user = users[socket.id];
@@ -83,7 +73,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Leave current room if any
     if (user.room && rooms.has(user.room)) {
       rooms.get(user.room).delete(user.username);
       io.to(user.room).emit('room users', Array.from(rooms.get(user.room)));
@@ -95,7 +84,6 @@ io.on('connection', (socket) => {
       socket.leave(user.room);
     }
 
-    // Join new room
     user.room = roomName;
     rooms.get(roomName).add(user.username);
     socket.join(roomName);
@@ -109,18 +97,21 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Chat messages
-  socket.on('chat message', ({ room, text }) => {
+  socket.on('chat message', ({ room, text, id }) => {
     const user = users[socket.id];
     if (!user || !room || !text) return;
     text = sanitize(text);
-    io.to(room).emit('chat message', {
+
+    const message = {
       user: user.username,
       text,
-      time: Date.now()
-    });
+      time: Date.now(),
+      id
+    };
 
-    // Notify others
+    messageStore.set(id, { ...message, room });
+    io.to(room).emit('chat message', message);
+
     for (let [roomName, members] of rooms.entries()) {
       if (roomName !== room && members.has(user.username)) {
         io.to(roomName).emit('new message notification', room);
@@ -128,13 +119,38 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Typing indicator
+  // 🆕 Edit message
+  socket.on('edit message', ({ id, text, room }) => {
+    const user = users[socket.id];
+    if (!user || !id || !text || !room) return;
+    text = sanitize(text);
+
+    const message = messageStore.get(id);
+    if (message && message.user === user.username && message.room === room) {
+      message.text = text;
+      io.to(room).emit('edit message', { id, text });
+    }
+  });
+
+  // 🆕 Delete message
+  socket.on('delete message', ({ id, room }) => {
+    const user = users[socket.id];
+    if (!user || !id || !room) return;
+
+    const message = messageStore.get(id);
+    if (message && message.user === user.username && message.room === room) {
+      messageStore.delete(id);
+      io.to(room).emit('delete message', { id });
+    }
+  });
+
   socket.on('typing', (room) => {
     const user = users[socket.id];
     if (user && room) {
       socket.to(room).emit('typing', user.username);
     }
   });
+
   socket.on('stop typing', (room) => {
     const user = users[socket.id];
     if (user && room) {
@@ -142,7 +158,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Disconnect cleanup
   socket.on('disconnect', () => {
     const user = users[socket.id];
     if (user) {
@@ -161,7 +176,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// 🚀 Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Chat server running on port ${PORT}`);
