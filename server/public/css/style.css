@@ -302,12 +302,23 @@ body {
 @media (max-width: 600px) {
     #chat-app {
         flex-direction: column;
-    }
+    }    
+    
     #room-list {
         width: 100%;
         min-width: 0;
         padding: 0.7rem 0.3rem;
+        overflow-x: auto; /* ADD THIS */
+        display: flex;    /* ADD THIS */
+        flex-wrap: wrap;  /* ADD THIS */
+        gap: 0.5rem;      /* ADD THIS */
     }
+
+    #room-list li {
+        flex: 1 1 auto;    /* ADD THIS */
+        text-align: center; /* ADD THIS */
+    }
+
     #chat-room header, #chat-room footer {
         padding: 0.7rem;
         font-size: 1em;
