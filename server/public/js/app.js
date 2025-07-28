@@ -1,5 +1,3 @@
-// Note: This code assumes you have a Socket.io server running and serving this client.
-
 let socket;
 let username = '';
 let currentRoom = '';
@@ -8,6 +6,7 @@ let usersInRoom = [];
 let typingTimeout;
 let isTyping = false;
 let windowFocused = true;
+let socketEventsBound = false; // ✅ Prevent multiple event bindings
 
 // DOM Elements
 const loginSection = document.getElementById('login-section');
@@ -70,7 +69,7 @@ function handleLogin() {
     }
 
     socket = io('https://chat-app-i5e6.onrender.com', {
-    transports: ['websocket'],
+        transports: ['websocket'],
     });
 
     socket.emit('check username', value, (isTaken) => {
@@ -96,7 +95,6 @@ newRoomInput.addEventListener('keydown', e => {
 function createRoom() {
     const roomName = sanitizeInput(newRoomInput.value);
     if (!roomName) return;
-    // Prevent duplicate room names (client-side check)
     if (rooms.includes(roomName)) {
         alert('Room name already exists.');
         return;
@@ -177,13 +175,11 @@ function renderMessage({ user, text, time, system }) {
     }
 }
 
-// Format time as HH:MM
 function formatTime(ts) {
     const date = new Date(ts);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Allow **bold**, *italic*, and links
 function formatMessageText(text) {
     let formatted = text
         .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
@@ -232,6 +228,9 @@ function showNotification(user, text) {
 
 // --- Socket.io Events ---
 function setupSocketEvents() {
+    if (socketEventsBound) return;
+    socketEventsBound = true;
+
     socket.on('room list', (roomArr) => {
         rooms = roomArr;
         renderRooms();
@@ -300,11 +299,8 @@ window.addEventListener('blur', () => {
     }
 });
 
-
 // Observe changes in the messages list
 const observer = new MutationObserver(() => {
     messagesList.scrollTop = messagesList.scrollHeight;
 });
-
-// Start observing the messages list for child node additions
 observer.observe(messagesList, { childList: true });
