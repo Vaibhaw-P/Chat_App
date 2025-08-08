@@ -27,8 +27,9 @@ app.get('/', (req, res) => {
 
 const users = {};
 const usernames = new Set();
-const rooms = new Map();
-const messageStore = new Map(); // 🆕 Store messages with ID for edit/delete
+const rooms = new Map();       // roomName -> Set(users)
+const roomOwners = new Map();  // roomName -> owner username
+const messageStore = new Map(); // messageID -> message
 
 function sanitize(str) {
   return String(str).trim().replace(/[<>&"'`]/g, c => ({
@@ -41,7 +42,14 @@ function sanitize(str) {
   }[c]));
 }
 
+function emitRoomList() {
+  io.emit('room list', Object.fromEntries(
+    Array.from(rooms.keys()).map(r => [r, roomOwners.get(r)])
+  ));
+}
+
 io.on('connection', (socket) => {
+
   socket.on('check username', (username, cb) => {
     username = sanitize(username);
     cb(usernames.has(username) || !username);
@@ -51,7 +59,7 @@ io.on('connection', (socket) => {
     username = sanitize(username);
     users[socket.id] = { username, room: null };
     usernames.add(username);
-    socket.emit('room list', Array.from(rooms.keys()));
+    emitRoomList();
   });
 
   socket.on('create room', (roomName, cb) => {
@@ -61,7 +69,8 @@ io.on('connection', (socket) => {
       return;
     }
     rooms.set(roomName, new Set());
-    io.emit('room list', Array.from(rooms.keys()));
+    roomOwners.set(roomName, users[socket.id]?.username);
+    emitRoomList();
     cb(true);
   });
 
@@ -106,10 +115,11 @@ io.on('connection', (socket) => {
       user: user.username,
       text,
       time: Date.now(),
-      id
+      id,
+      room
     };
 
-    messageStore.set(id, { ...message, room });
+    messageStore.set(id, message);
     io.to(room).emit('chat message', message);
 
     for (let [roomName, members] of rooms.entries()) {
@@ -119,7 +129,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 🆕 Edit message
+  // Edit message
   socket.on('edit message', ({ id, text, room }) => {
     const user = users[socket.id];
     if (!user || !id || !text || !room) return;
@@ -132,7 +142,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 🆕 Delete message
+  // Delete message
   socket.on('delete message', ({ id, room }) => {
     const user = users[socket.id];
     if (!user || !id || !room) return;
@@ -142,6 +152,32 @@ io.on('connection', (socket) => {
       messageStore.delete(id);
       io.to(room).emit('delete message', { id });
     }
+  });
+
+  // 🆕 Delete room
+  socket.on('delete room', (roomName) => {
+    roomName = sanitize(roomName);
+    const user = users[socket.id];
+    if (!user || !rooms.has(roomName)) return;
+
+    const owner = roomOwners.get(roomName);
+    if (owner !== user.username) return; // Only owner can delete
+
+    // Notify users in the room
+    io.to(roomName).emit('system message', {
+      user: 'system',
+      text: `Room "${roomName}" has been deleted.`,
+      time: Date.now()
+    });
+
+    // Remove room
+    rooms.delete(roomName);
+    roomOwners.delete(roomName);
+
+    // Kick all users out of deleted room
+    io.in(roomName).socketsLeave(roomName);
+
+    emitRoomList();
   });
 
   socket.on('typing', (room) => {
