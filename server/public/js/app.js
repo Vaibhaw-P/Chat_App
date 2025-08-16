@@ -278,15 +278,16 @@ function setupSocketEvents() {
   if (socketEventsBound) return;
   socketEventsBound = true;
 
-  socket.on('room list', roomData => {
-    roomsList.innerHTML = ''; // Clear existing rooms
-    Object.entries(roomData).forEach(([roomName, admin]) => {
-        const li = document.createElement('li');
-        li.textContent = `${roomName} (Admin: ${admin})`; // Display room admin
-        li.addEventListener('click', () => joinRoom(roomName));
-        roomsList.appendChild(li);
-    });
-});
+  socket.on('room list', (roomArray) => {
+    // Server will send an array OR object with owners
+    if (Array.isArray(roomArray)) {
+      rooms = roomArray;
+    } else {
+      rooms = Object.keys(roomArray);
+      roomOwners = roomArray;
+    }
+    renderRooms();
+  });
 
   socket.on('joined room', (room, users) => {
     currentRoom = room;
