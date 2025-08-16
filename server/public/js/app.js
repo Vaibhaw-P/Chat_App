@@ -1,8 +1,7 @@
 let socket;
 let username = '';
 let currentRoom = '';
-let rooms = [];
-let roomOwners = {}; // 🆕 roomName -> owner username
+let rooms = {}; // fixed: object, not array
 let usersInRoom = [];
 let typingTimeout;
 let isTyping = false;
@@ -23,28 +22,6 @@ const userInfo = document.getElementById('user-info');
 const messagesList = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
-
-// Create user list sidebar if missing
-let userListSidebar = document.getElementById('user-list');
-if (!userListSidebar) {
-  userListSidebar = document.createElement('div');
-  userListSidebar.id = 'user-list';
-  userListSidebar.style.padding = '1rem';
-  userListSidebar.style.background = '#f7f7fa';
-  userListSidebar.style.borderLeft = '1px solid #e0e0e0';
-  userListSidebar.style.minWidth = '150px';
-  userListSidebar.style.maxWidth = '200px';
-  userListSidebar.style.overflowY = 'auto';
-  userListSidebar.innerHTML = `
-    <h4>Users</h4>
-    <ul id="user-list-ul" style="list-style:none;padding:0;margin:0;"></ul>
-    <div id="typing-indicator" style="color:#888;font-size:0.95em;margin-top:0.5em;"></div>
-  `;
-  const chatRoom = document.getElementById('chat-room');
-  chatRoom.parentNode.insertBefore(userListSidebar, chatRoom.nextSibling);
-}
-const userListUl = document.getElementById('user-list-ul');
-const typingIndicator = document.getElementById('typing-indicator');
 
 // --- Sanitization ---
 function sanitizeInput(str) {
@@ -75,20 +52,25 @@ function handleLogin() {
 
   if (socket) socket.disconnect();
 
-  socket = io('https://chat-app-i5e6.onrender.com', {
-    transports: ['websocket'],
-  });
+  socket = io('https://chat-app-i5e6.onrender.com', { transports: ['websocket'] });
 
   socket.emit('check username', value, isTaken => {
     if (isTaken) {
       loginError.textContent = 'Username already taken. Choose another.';
     } else {
       username = value;
+      localStorage.setItem('username', username);
+
       loginSection.classList.add('hidden');
       chatApp.classList.remove('hidden');
       userInfo.textContent = username;
       setupSocketEvents();
       socket.emit('join lobby', username);
+
+      const savedRoom = localStorage.getItem('room');
+      if (savedRoom) {
+        joinRoom(savedRoom);
+      }
     }
   });
 }
@@ -102,8 +84,8 @@ newRoomInput.addEventListener('keydown', e => {
 function createRoom() {
   const roomName = sanitizeInput(newRoomInput.value);
   if (!roomName) return;
-  if (rooms.includes(roomName)) {
-    alert('Room name already exists.');
+  if (rooms[roomName]) {
+    alert('Room already exists.');
     return;
   }
 
@@ -113,20 +95,19 @@ function createRoom() {
   });
 }
 
-// --- Render Rooms ---
 function renderRooms() {
   roomsList.innerHTML = '';
-  rooms.forEach(room => {
+  Object.keys(rooms).forEach(room => {
     const li = document.createElement('li');
     li.textContent = room;
     li.className = room === currentRoom ? 'active' : '';
     li.addEventListener('click', () => joinRoom(room));
 
-    // 🆕 Add delete button if current user is owner
-    if (roomOwners[room] === username) {
+    // Add delete button if current user is owner
+    if (rooms[room] === username) {
       const delBtn = document.createElement('button');
       delBtn.textContent = '❌';
-      delBtn.className = 'delete-room-btn';
+      delBtn.classList.add('delete-room-btn');
       delBtn.onclick = (e) => {
         e.stopPropagation();
         if (confirm(`Delete room "${room}"?`)) {
@@ -144,6 +125,7 @@ function joinRoom(room) {
   if (room === currentRoom) return;
   socket.emit('join room', room, (success, msg) => {
     if (!success) alert(msg || 'Could not join room.');
+    else localStorage.setItem('room', room);
   });
 }
 
@@ -255,6 +237,7 @@ function stopTyping() {
 
 // --- User List ---
 function renderUserList(users) {
+  const userListUl = document.getElementById('user-list-ul');
   userListUl.innerHTML = '';
   users.forEach(u => {
     const li = document.createElement('li');
@@ -278,14 +261,8 @@ function setupSocketEvents() {
   if (socketEventsBound) return;
   socketEventsBound = true;
 
-  socket.on('room list', (roomArray) => {
-    // Server will send an array OR object with owners
-    if (Array.isArray(roomArray)) {
-      rooms = roomArray;
-    } else {
-      rooms = Object.keys(roomArray);
-      roomOwners = roomArray;
-    }
+  socket.on('room list', r => {
+    rooms = r;
     renderRooms();
   });
 
@@ -295,6 +272,11 @@ function setupSocketEvents() {
     usersInRoom = users;
     messagesList.innerHTML = '';
     renderUserList(usersInRoom);
+  });
+
+  socket.on('room history', msgs => {
+    messagesList.innerHTML = '';
+    msgs.forEach(renderMessage);
   });
 
   socket.on('chat message', renderMessage);
@@ -316,11 +298,15 @@ function setupSocketEvents() {
   socket.on('room users', renderUserList);
 
   socket.on('typing', user => {
-    if (user !== username) typingIndicator.textContent = `${user} is typing...`;
+    if (user !== username) {
+      document.getElementById('typing-indicator').textContent = `${user} is typing...`;
+    }
   });
 
   socket.on('stop typing', user => {
-    if (user !== username) typingIndicator.textContent = '';
+    if (user !== username) {
+      document.getElementById('typing-indicator').textContent = '';
+    }
   });
 
   socket.on('new message notification', room => {
@@ -331,14 +317,8 @@ function setupSocketEvents() {
   });
 
   socket.on('disconnect', () => {
-    loginSection.classList.remove('hidden');
-    chatApp.classList.add('hidden');
-    loginError.textContent = 'Disconnected. Please refresh.';
-    userListUl.innerHTML = '';
-    messagesList.innerHTML = '';
-    roomsList.innerHTML = '';
-    currentRoomSpan.textContent = 'Select a room';
-    userInfo.textContent = '';
+    // Try reconnect
+    setTimeout(() => socket.connect(), 1000);
   });
 }
 
@@ -351,3 +331,12 @@ window.addEventListener('blur', () => {
 new MutationObserver(() => {
   messagesList.scrollTop = messagesList.scrollHeight;
 }).observe(messagesList, { childList: true });
+
+// --- Auto Login ---
+window.addEventListener('load', () => {
+  const savedUser = localStorage.getItem('username');
+  if (savedUser) {
+    usernameInput.value = savedUser;
+    handleLogin();
+  }
+});
