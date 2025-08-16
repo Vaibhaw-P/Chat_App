@@ -43,9 +43,9 @@ function sanitize(str) {
 }
 
 function emitRoomList() {
-  io.emit('room list', Object.fromEntries(
-    Array.from(rooms.keys()).map(r => [r, roomOwners.get(r)])
-  ));
+    io.emit('room list', Object.fromEntries(
+        Array.from(rooms.keys()).map(room => [room, roomOwners.get(room)]) // Include admin info
+    ));
 }
 
 io.on('connection', (socket) => {
@@ -64,13 +64,14 @@ io.on('connection', (socket) => {
 
   socket.on('create room', (roomName, cb) => {
     roomName = sanitize(roomName);
-    if (!roomName || rooms.has(roomName)) {
-      cb(false, 'Room name taken or invalid.');
-      return;
+    const user = users[socket.id];
+    if (!user || !roomName || rooms.has(roomName)) {
+        cb(false, 'Room name taken or invalid.');
+        return;
     }
     rooms.set(roomName, new Set());
-    roomOwners.set(roomName, users[socket.id]?.username);
-    emitRoomList();
+    roomOwners.set(roomName, user.username); // Store the room admin
+    io.emit('room list', Array.from(rooms.keys())); // Send updated room list
     cb(true);
   });
 

@@ -2,6 +2,7 @@ let socket;
 let username = '';
 let currentRoom = '';
 let rooms = [];
+let roomOwners = {}; // 🆕 roomName -> owner username
 let usersInRoom = [];
 let typingTimeout;
 let isTyping = false;
@@ -112,6 +113,7 @@ function createRoom() {
   });
 }
 
+// --- Render Rooms ---
 function renderRooms() {
   roomsList.innerHTML = '';
   rooms.forEach(room => {
@@ -119,6 +121,21 @@ function renderRooms() {
     li.textContent = room;
     li.className = room === currentRoom ? 'active' : '';
     li.addEventListener('click', () => joinRoom(room));
+
+    // 🆕 Add delete button if current user is owner
+    if (roomOwners[room] === username) {
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '❌';
+      delBtn.className = 'delete-room-btn';
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete room "${room}"?`)) {
+          socket.emit('delete room', room);
+        }
+      };
+      li.appendChild(delBtn);
+    }
+
     roomsList.appendChild(li);
   });
 }
@@ -261,10 +278,15 @@ function setupSocketEvents() {
   if (socketEventsBound) return;
   socketEventsBound = true;
 
-  socket.on('room list', r => {
-    rooms = r;
-    renderRooms();
-  });
+  socket.on('room list', roomData => {
+    roomsList.innerHTML = ''; // Clear existing rooms
+    Object.entries(roomData).forEach(([roomName, admin]) => {
+        const li = document.createElement('li');
+        li.textContent = `${roomName} (Admin: ${admin})`; // Display room admin
+        li.addEventListener('click', () => joinRoom(roomName));
+        roomsList.appendChild(li);
+    });
+});
 
   socket.on('joined room', (room, users) => {
     currentRoom = room;
@@ -293,9 +315,7 @@ function setupSocketEvents() {
   socket.on('room users', renderUserList);
 
   socket.on('typing', user => {
-    if (user !== username) {
-      typingIndicator.textContent = `${user} is typing...`;
-    }
+    if (user !== username) typingIndicator.textContent = `${user} is typing...`;
   });
 
   socket.on('stop typing', user => {
@@ -304,7 +324,7 @@ function setupSocketEvents() {
 
   socket.on('new message notification', room => {
     if (room !== currentRoom) {
-      const li = [...roomsList.children].find(l => l.textContent === room);
+      const li = [...roomsList.children].find(l => l.textContent.includes(room));
       if (li) li.style.fontWeight = 'bold';
     }
   });
